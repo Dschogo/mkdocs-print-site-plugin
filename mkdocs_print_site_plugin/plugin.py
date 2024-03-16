@@ -345,7 +345,10 @@ class PrintSitePlugin(BasePlugin):
 
         # Remove lazy loading attributes from images
         # https://regex101.com/r/HVpKPs/1
-        html = re.sub(r"(\<img.+)(loading=\"lazy\")", r"\1", html)        
+        html = re.sub(r"(\<img.+)(loading=\"lazy\")", r"\1", html) 
+
+        # expand all details elements
+        html = re.sub(r'<details class="', r'<details open class="', html)
 
         # Compatiblity with mkdocs-chart-plugin
         # As this plugin adds some javascript to every page
