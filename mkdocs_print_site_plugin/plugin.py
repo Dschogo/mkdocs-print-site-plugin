@@ -382,12 +382,21 @@ class PrintSitePlugin(BasePlugin):
         <script type="text/javascript">
         document.addEventListener('DOMContentLoaded', function () {
             %s
-        })
+        });
         </script>
         """
-            % js_calls
+            % (js_calls)
         )
+        # remove left navigation via css
+        print_site_js += """
+        <style>
+        .md-sidebar--primary {
+            display: none !important;
+        }
+        </style>
+        """
         html = html.replace("</head>", print_site_js + "</head>")
+
 
         # Write the print_page file to the output folder
         write_file(
