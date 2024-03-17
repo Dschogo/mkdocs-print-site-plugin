@@ -1,5 +1,6 @@
 import jinja2
 import logging
+import copy
 
 from mkdocs.structure.toc import AnchorLink, TableOfContents
 
@@ -38,8 +39,24 @@ class Renderer(object):
         self.items = []
 
     def _get_items(self):
-        return [i for i in self.items if not i == self.print_page]
 
+        def reoder_recursive(items, depth=0):
+
+            #items2 = [i for i in items if not (i.is_page and i.url.count("/") == depth)]
+            # put excluded pages by (i.is_page and i.url.count("/") == depth) at the front
+            items = sorted(items, key=lambda x: (x.is_page and x.url.count("/") == depth), reverse=True)
+            
+
+
+            for i in range(len(items)):
+                if items[i].is_section:
+                    items[i].children = reoder_recursive(items[i].children, depth + 1)
+            return items
+        
+        return reoder_recursive([i for i in self.items if not i == self.print_page])
+
+        
+    
     def write_combined(self):
         """
         Generates the HTML of the page that combines all page into one.
@@ -199,57 +216,51 @@ class Renderer(object):
         and we indent with the pages inside.
 
         Reference: https://github.com/mkdocs/mkdocs/blob/master/mkdocs/structure/toc.py
+
+        Returns:
+            TableOfContents: The table of contents.
         """
         toc = []
+        max_depth = self.plugin_config.get("toc_depth", 1)
+        self._generate_toc_recursive(self._get_items(), toc, max_depth)
+        return TableOfContents(toc)
 
-        if self.plugin_config.get("enumerate_headings"):
-            chapter_number = 0
-            section_number = 0
+    def _generate_toc_recursive(self, items, toc, max_depth, level=0, parent_number="", parent_title=""):
+        chapter_number = 0
 
-        for item in self._get_items():
+        for item in items:
             if item.is_page:
+                if exclude(item.file.src_path, self.plugin_config.get("exclude", [])):
+                        logging.debug("Excluding page " + item.file.src_path)
+                        continue
                 page_key = get_page_key(item.url)
                 # navigate to top of page if page is homepage
                 if page_key == "index":
                     page_key = ""
                 
-                if self.plugin_config.get("enumerate_headings"):
-                    chapter_number += 1
-                    title = f"{chapter_number}. {item.title}"
-                else:
-                    title = item.title
-                toc.append(AnchorLink(title=title, id=f"{page_key}", level=0))
-            
-            if item.is_section:
+                chapter_number += 1
+                toc_number = f"{parent_number}{chapter_number}"
+                title = f"{toc_number} {item.title}"
 
-                if self.plugin_config.get("enumerate_headings"):
-                    section_number += 1
-                    title = f"{int_to_roman(section_number)}. {item.title}"
-                else:
-                    title = item.title
+                #if level == 0 or len(item.url.split("/")) - 1 > level:
+                toc.append(AnchorLink(title=title, id=f"{page_key}", level=level))
+                
+                if level < max_depth and item.children:
+                    self._generate_toc_recursive(item.children, toc, max_depth, level + 1, parent_number=f"{toc_number}.", parent_title=item.title)
+            
+            elif item.is_section:
+                chapter_number += 1
+                toc_number = f"{parent_number}{chapter_number}"
+                title = f"{toc_number} {item.title}"
 
                 section_link = AnchorLink(
-                    title=title, id=f"section-{to_snake_case(item.title)}", level=0
+                    title=title, id=f"section-{to_snake_case(item.title)}", level=level
                 )
 
-                subpages = [p for p in item.children if p.is_page]
-                for page in subpages:
-                    if self.plugin_config.get("enumerate_headings"):
-                        chapter_number += 1
-                        title = f"{chapter_number}. {page.title}"
-                    else:
-                        title = page.title
-                    
-                    page_key = get_page_key(page.url)
-                    section_link.children.append(
-                        AnchorLink(title=title, id=f"{page_key}", level=1)
-                    )
-
+                if level < max_depth and item.children:
+                    self._generate_toc_recursive(item.children, section_link.children, max_depth, level + 1, parent_number=f"{toc_number}.", parent_title=item.title)
+                
                 toc.append(section_link)
-
-        return TableOfContents(toc)
-
-
 
 def int_to_roman(num):
     """
